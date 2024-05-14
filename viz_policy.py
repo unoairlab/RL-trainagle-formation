@@ -1,4 +1,4 @@
-#!/home/airlab/anaconda3/envs/FormationControl/bin/python
+#!/home/airlab/anaconda3/envs/RL-trainagle-formation/bin/python
 import gymnasium as gym
 import os
 import argparse
@@ -21,12 +21,17 @@ def main(args):
 
     obs, _ = vec_env.reset()
     print(obs.shape)
-    while True:
 
+    count = 0
+    for _ in range(1000):
         try:
             action, _states = model.predict(obs)
             obs, rewards, dones, _, info = vec_env.step(action)
             vec_env.render("human")
+            if info.get('collision', False):
+                count += 1
+                print('collision detected ', count)
+
         except KeyboardInterrupt:
             break 
 

@@ -122,27 +122,24 @@ class HumanPolicy:
 
 
 class TriangleEnv(Env):
-    def __init__(self, max_side_length, box_min, box_max):
+    def __init__(self, max_side_length, box_min, box_max, timeout=10000):
         self.max_side_length = max_side_length
         self.box_min = box_min
         self.box_max = box_max
         self.width = box_max[0] - box_min[0]
         self.height = box_max[1] - box_min[1]
+        self.timeout = timeout
 
-        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-np.pi, high=np.pi, shape=(1,), dtype=np.float32)
+        # self.action_space = spaces.Box(low=-np.pi - np.pi / 8, high=np.pi + np.pi / 8, shape=(1,), dtype=np.float32)
         self.observation_space = spaces.Box(low=-min(box_min), high=max(box_max), shape=(10,), dtype=np.float32)  # TODO: increase the state
-
-    def map_to_0_2pi(self, value):
-        if value < -1 or value > 1:
-            raise ValueError("Input value must be in the range [-1, 1]")
-        return (value + 1) * np.pi
 
     def step(self, action):
 
         self.point.update()
         apex_point = np.array([self.point.x, self.point.y])
         self.tri = Triangle(apex_point, self.max_side_length, self.box_min, self.box_max)
-        self.tri = self.tri.rotate(self.map_to_0_2pi(action[0]))
+        self.tri = self.tri.rotate(action[0])
 
 
         s_t = self.tri.triangle_vertices.tolist()
@@ -151,15 +148,37 @@ class TriangleEnv(Env):
         s_t = np.array(s_t, dtype=np.float32)
 
         # compute reward
-        r_t = 1000.0 * np.exp(-abs(self.last_triangle.get_angle() - self.tri.get_angle()))
-        done = not self.tri.is_valid()
-        if done: r_t = -1000.0
-        done = self.step_count > 10000
+        # r_t = 100.0 * np.exp(-abs(self.last_triangle.get_angle() - self.tri.get_angle()))
+        r_t = self.step_count + 100.0 *  np.exp(-abs(self.last_triangle.get_angle() - self.tri.get_angle()))
+        # r_t = self.step_count - abs(self.last_triangle.get_angle() - self.tri.get_angle())
+        # r_t = self.step_count
+        hit = not self.tri.is_valid()
+        if hit:
+            r_t = -1000.0
+            # r_t = -self.timeout / (self.step_count + 1 )
+
+        done = self.step_count > self.timeout
 
         self.step_count += 1
         self.last_triangle = self.tri
 
-        return s_t.flatten(), r_t, done, True, {}
+        return s_t.flatten(), r_t, done, True, {'collision': hit}
+
+
+    def random_state(self):
+
+        while True:
+            x = np.random.uniform(self.box_min[0], self.box_max[0])
+            y = np.random.uniform(self.box_min[1], self.box_max[1])
+            theta = np.random.uniform(-np.pi,  np.pi)
+            vx = np.random.choice([-1.0, 1.0]) * 0.03
+            vy = np.random.choice([-1.0, 1.0]) * 0.06
+
+            self.point = HumanPolicy(x=x, y=y, vx=vx, vy=vy, width=self.width, height=self.height)
+            self.last_triangle = Triangle(np.array([x, y]), self.max_side_length, self.box_min, self.box_max)
+            self.last_triangle = self.last_triangle.rotate(theta)
+            if self.last_triangle.is_valid():
+                break
 
 
     def reset(self,
@@ -167,8 +186,10 @@ class TriangleEnv(Env):
               seed: Optional[int] = None,
               return_info: bool = False,
               options: Optional[dict] = None):
-        self.point = HumanPolicy(x=2, y=3, vx=0.03, vy=0.06, width=self.width, height=self.height)
-        self.last_triangle = Triangle(np.array([2, 3]), self.max_side_length, self.box_min, self.box_max)
+        #TODO randomize location
+        # self.point = HumanPolicy(x=2, y=3, vx=0.03, vy=0.06, width=self.width, height=self.height)
+        # self.last_triangle = Triangle(np.array([2, 3]), self.max_side_length, self.box_min, self.box_max)
+        self.random_state()
         self.step_count = 0
         s_t = self.last_triangle.triangle_vertices.tolist()
         s_t.append(self.box_min)
@@ -180,8 +201,8 @@ class TriangleEnv(Env):
 
         plt.cla()
         self.tri.plot(color='b') if self.tri.is_valid() else self.tri.plot(color='r')
-        plt.title('heading angle {0:.3f} deg'.format(
-            np.rad2deg(self.tri.get_angle())))
+        plt.title('step count {0:.0f} '.format(
+            np.rad2deg(self.step_count)))
         plt.xlim(self.box_min[0], self.box_max[0])
         plt.ylim(self.box_min[1], self.box_max[1])
         plt.gca().set_aspect('equal', adjustable='box')

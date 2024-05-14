@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="pythonProject" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="FormationControl" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="RL-trainagle-formation" project-jdk-type="Python SDK" />
 </project>

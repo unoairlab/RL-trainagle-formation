@@ -15,8 +15,10 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import DummyVecEnv
 
-
+np.random.seed(3126543265)
 class SaveOnBestTrainingRewardCallback(BaseCallback):
     """
     Callback for saving a model (the check is done every ``check_freq`` steps)
@@ -83,25 +85,21 @@ if __name__ == "__main__":
     parser.add_argument('--model', type=str, choices=['ppo', 'td3'])
     parser.add_argument('--log-dir', type=str, default='results/td3/v0', help='specify training log dir')
     parser.add_argument('--training-steps', type=int, default=5e4, help='number of training steps' )
+    parser.add_argument('--num_envs', type=int, default=10)
+    parser.add_argument('--timeout', type=int, default=128)
     args = parser.parse_args()
     # Create log dir
     log_dir = args.log_dir
     os.makedirs(log_dir, exist_ok=True)
 
     # Create and wrap the environment
-    env = TriangleEnv(max_side_length, box_min, box_max)
-    # Logs will be saved in log_dir/monitor.csv
-    env = Monitor(env, log_dir)
+    # env = TriangleEnv(max_side_length, box_min, box_max)
+    callable_env = lambda :TriangleEnv(max_side_length, box_min, box_max, args.timeout)
+    vec_env = DummyVecEnv([ callable_env for _ in range(args.num_envs)])
 
-        # Create action noise because TD3 and DDPG use a deterministic policy
-    n_actions = env.action_space.shape[-1]
-    action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
-    # Create the callback: check every 1000 steps
-    callback = SaveOnBestTrainingRewardCallback(args.training_steps, check_freq=1000, log_dir=log_dir)
-    # Create RL model
-    # model = TD3('MlpPolicy', env, action_noise=action_noise, verbose=0)
-    model = get_model(args, env, action_noise) 
-    # Train the agent
-    model.learn(total_timesteps=args.training_steps, callback=callback)
+    model = PPO("MlpPolicy", vec_env, verbose=1)
+    tb_log_name = os.path.join(log_dir, 'tb_log')
 
+    model.learn(total_timesteps=args.training_steps,  tb_log_name=log_dir, log_interval=10000, progress_bar=True)
+    model.save(os.path.join(log_dir, 'best_model'))
 
